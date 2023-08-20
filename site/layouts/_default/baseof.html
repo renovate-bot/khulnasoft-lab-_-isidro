@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="{{ .Language.Lang }}" class="no-js">
+
+<head>
+  {{- partial "template/head.html" . -}}
+</head>
+
+<body>
+
+  {{- partial "layout/header.html" . -}}
+
+  <main>
+    {{- block "main" . }}{{- end }}
+  </main>
+  
+  {{- partial "layout/footer.html" . -}}
+  
+  {{- block "scripts" . }}{{- end }}
+
+</body>
+</html>

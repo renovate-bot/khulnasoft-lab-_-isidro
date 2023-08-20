@@ -1,0 +1,79 @@
+{{ if eq .Values.keywords.enabled true }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: keywords
+  labels:
+    app: keywords
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+  selector:
+    app: keywords
+---
+kind: ServiceExport
+apiVersion: net.gke.io/v1
+metadata:
+ name: keywords
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keywords
+  labels:
+    app: keywords
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keywords
+  template:
+    metadata:
+      labels:
+        app: keywords
+        sidecar.istio.io/inject: "true"
+        istio.io/rev: "asm-managed-rapid"
+    spec:
+      serviceAccountName: tracing-microservice
+      containers:
+      - name: keywords
+        image: {{ .Values.keywords.image.repository }}:{{ .Values.keywords.image.tag }}
+        imagePullPolicy: Always
+        resources: {{ toYaml .Values.keywords.resources | nindent 10 }}
+      restartPolicy: Always
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: keywords
+spec:
+  podSelector:
+    matchLabels:
+      app: keywords
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    # GCP Health Check IPs
+    - ipBlock:
+        cidr: 35.191.0.0/16
+    - ipBlock:
+        cidr: 130.211.0.0/22
+    # RFC1918 (overkill, but enables multi-cluster and multi-region)
+    - ipBlock:
+        cidr: 10.0.0.0/8
+    - ipBlock:
+        cidr: 172.16.0.0/12
+    - ipBlock:
+        cidr: 192.168.0.0/16
+    # In-cluster services (failover for non-RFC1918 topologies)
+    - podSelector:
+        matchLabels:
+          app: orchestration
+  egress:
+  - {}
+{{ end }}

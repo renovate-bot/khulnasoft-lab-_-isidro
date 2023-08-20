@@ -1,0 +1,66 @@
+{{ if eq .Values.orchestration.enabled true }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orchestration
+  labels:
+    app: orchestration
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orchestration
+  template:
+    metadata:
+      labels:
+        app: orchestration
+        sidecar.istio.io/inject: "true"
+        istio.io/rev: "asm-managed-rapid"
+    spec:
+      serviceAccountName: orchestration-microservice
+      containers:
+      - name: orchestration
+        image: {{ .Values.orchestration.image.repository }}:{{ .Values.orchestration.image.tag }}
+        imagePullPolicy: Always
+        env:
+        - name: PUBSUB_PROJECT
+          value: {{ .Values.project }}
+        - name: SPANNER_INSTANCE_ID
+          value: "isidro"
+        - name: SPANNER_DATABASE_ID
+          value: "isidro"
+        - name: GREETING
+          value: {{ .Values.orchestration.greeting }}
+        - name: GBASH_ASYNC_HOST
+          value: gbash-async.{{ .Release.Namespace }}.svc.clusterset.local
+        - name: GBASH_SYNC_HOST
+          value: gbash-sync.{{ .Release.Namespace }}.svc.clusterset.local
+        - name: KEYWORDS_HOST
+          value: keywords.{{ .Release.Namespace }}.svc.clusterset.local
+        - name: KUBEBASH_HOST
+          value: kubebash.{{ .Release.Namespace }}.svc.clusterset.local
+        - name: POLICY_AGENT_HOST
+          value: policy-agent.{{ .Release.Namespace }}.svc.clusterset.local
+        - name: REPEATER_HOST
+          value: repeater.{{ .Release.Namespace }}.svc.clusterset.local
+        - name: RESPONDER_HOST
+          value: responder.{{ .Release.Namespace }}.svc.clusterset.local
+        - name: TASKS_HOST
+          value: tasks.{{ .Release.Namespace }}.svc.clusterset.local
+        resources: {{ toYaml .Values.orchestration.resources | nindent 10 }}
+      restartPolicy: Always
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: orchestration
+spec:
+  podSelector:
+    matchLabels:
+      app: orchestration
+  policyTypes:
+  - Egress
+  - Ingress
+  egress:
+  - {}
+{{ end }}

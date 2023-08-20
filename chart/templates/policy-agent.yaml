@@ -1,0 +1,204 @@
+{{ if eq .Values.policyAgent.enabled true }}
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: policy-agent
+spec:
+  hosts:
+  - "policy-agent"
+  http:
+  - route:
+    {{ if and (eq .Values.policyAgent.sympathetic.enabled true) (eq .Values.policyAgent.succinct.enabled true) }}
+    - destination:
+        host: policy-agent
+        subset: sympathetic
+      weight: 50
+    - destination:
+        host: policy-agent
+        subset: succinct
+      weight: 50
+    {{ else if eq .Values.policyAgent.sympathetic.enabled true }}
+    - destination:
+        host: policy-agent
+        subset: sympathetic
+      weight: 100
+    {{ else if eq .Values.policyAgent.succinct.enabled true }}
+    - destination:
+        host: policy-agent
+        subset: succinct
+      weight: 100
+    {{ end }}
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: policy-agent
+spec:
+  host: policy-agent
+  subsets:
+  {{ if eq .Values.policyAgent.sympathetic.enabled true }}
+  - name: sympathetic
+    labels:
+      version: sympathetic
+  {{ end }}
+  {{ if eq .Values.policyAgent.succinct.enabled true }}
+  - name: succinct
+    labels:
+      version: succinct
+  {{ end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: policy-agent
+  labels:
+    app: policy-agent
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+  selector:
+    app: policy-agent
+---
+kind: ServiceExport
+apiVersion: net.gke.io/v1
+metadata:
+ name: policy-agent
+---
+{{ if eq .Values.policyAgent.sympathetic.enabled true }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: policy-agent-sympathetic
+  labels:
+    app: policy-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: policy-agent
+      version: sympathetic
+  template:
+    metadata:
+      labels:
+        app: policy-agent
+        version: sympathetic
+        sidecar.istio.io/inject: "true"
+        istio.io/rev: "asm-managed-rapid"
+    spec:
+      containers:
+      - name: policy-agent
+        image: {{ .Values.policyAgent.image.repository }}:{{ .Values.policyAgent.image.tag }}
+        args:
+        - "run"
+        - "--ignore=.*"  # exclude hidden dirs created by Kubernetes
+        - "--server"
+        - "--addr=:80"
+        - "/etc/opa/policies"
+        resources: {{ toYaml .Values.policyAgent.resources | nindent 10 }}
+        volumeMounts:
+        - name: actions-rego
+          mountPath: /etc/opa/policies/routing.rego
+          subPath: routing.rego
+      volumes:
+      - name: actions-rego
+        configMap:
+          name: policy-agent-sympathetic-actions-rego-v7
+          defaultMode: 0444
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: policy-agent-sympathetic-actions-rego-v7
+data:
+  routing.rego: |
+  {{ .Values.policyAgent.sympathetic.config | nindent 4 }}
+{{ end }}
+{{ if eq .Values.policyAgent.succinct.enabled true }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: policy-agent-succinct
+  labels:
+    app: policy-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: policy-agent
+      version: succinct
+  template:
+    metadata:
+      labels:
+        app: policy-agent
+        version: succinct
+        sidecar.istio.io/inject: "true"
+        istio.io/rev: "asm-managed-rapid"
+    spec:
+      containers:
+      - name: policy-agent
+        image: {{ .Values.policyAgent.image.repository }}:{{ .Values.policyAgent.image.tag }}
+        args:
+        - "run"
+        - "--ignore=.*"  # exclude hidden dirs created by Kubernetes
+        - "--server"
+        - "--addr=:80"
+        - "/etc/opa/policies"
+        resources: {{ toYaml .Values.policyAgent.resources | nindent 10 }}
+        volumeMounts:
+        - name: actions-rego
+          mountPath: /etc/opa/policies/routing.rego
+          subPath: routing.rego
+      volumes:
+      - name: actions-rego
+        configMap:
+          name: policy-agent-succinct-actions-rego-v7
+          defaultMode: 0444
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: policy-agent-succinct-actions-rego-v7
+data:
+  routing.rego: |
+  {{ .Values.policyAgent.succinct.config | nindent 4 }}
+{{ end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: policy-agent
+spec:
+  podSelector:
+    matchLabels:
+      app: policy-agent
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    # GCP Health Check IPs
+    - ipBlock:
+        cidr: 35.191.0.0/16
+    - ipBlock:
+        cidr: 130.211.0.0/22
+    # RFC1918 (overkill, but enables multi-cluster and multi-region)
+    - ipBlock:
+        cidr: 10.0.0.0/8
+    - ipBlock:
+        cidr: 172.16.0.0/12
+    - ipBlock:
+        cidr: 192.168.0.0/16
+    # In-cluster services (failover for non-RFC1918 topologies)
+    - podSelector:
+        matchLabels:
+          app: orchestration
+  egress:
+  - {}
+{{ end }}

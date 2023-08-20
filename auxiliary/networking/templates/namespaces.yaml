@@ -1,0 +1,16 @@
+kind: Namespace
+apiVersion: v1
+metadata:
+  name: isidro
+---
+kind: Namespace
+apiVersion: v1
+metadata:
+  name: mattermost
+---
+kind: Namespace
+apiVersion: v1
+metadata:
+  name: configconnector-resources
+  annotations:
+    cnrm.cloud.google.com/project-id: "{{ .Values.project }}"

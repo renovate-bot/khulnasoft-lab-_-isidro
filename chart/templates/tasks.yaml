@@ -1,0 +1,84 @@
+{{ if eq .Values.tasks.enabled true }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: tasks
+  labels:
+    app: tasks
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+  selector:
+    app: tasks
+---
+kind: ServiceExport
+apiVersion: net.gke.io/v1
+metadata:
+ name: tasks
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tasks
+  labels:
+    app: tasks
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tasks
+  template:
+    metadata:
+      labels:
+        app: tasks
+        sidecar.istio.io/inject: "true"
+        istio.io/rev: "asm-managed-rapid"
+    spec:
+      serviceAccountName: tracing-microservice
+      containers:
+      - name: tasks
+        image: {{ .Values.tasks.image.repository }}:{{ .Values.tasks.image.tag }}
+        imagePullPolicy: Always
+        env:
+        - name: RESPONDER_HOST
+          value: responder.{{ .Release.Namespace }}.svc.clusterset.local
+        - name: DEPLOYER_GITHUB_HOST
+          value: deployer-github.{{ .Release.Namespace }}.svc.clusterset.local
+        resources: {{ toYaml .Values.tasks.resources | nindent 10 }}
+      restartPolicy: Always
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tasks
+spec:
+  podSelector:
+    matchLabels:
+      app: tasks
+  policyTypes:
+  - Egress
+  - Ingress
+  ingress:
+  - from:
+    # GCP Health Check IPs
+    - ipBlock:
+        cidr: 35.191.0.0/16
+    - ipBlock:
+        cidr: 130.211.0.0/22
+    # RFC1918 (overkill, but enables multi-cluster and multi-region)
+    - ipBlock:
+        cidr: 10.0.0.0/8
+    - ipBlock:
+        cidr: 172.16.0.0/12
+    - ipBlock:
+        cidr: 192.168.0.0/16
+    # In-cluster services (failover for non-RFC1918 topologies)
+    - podSelector:
+        matchLabels:
+          app: orchestration
+  egress:
+  - {}
+{{ end }}

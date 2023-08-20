@@ -1,0 +1,69 @@
+{{ if eq .Values.gatekeeper.enabled true }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: gatekeeper
+  labels:
+    app: gatekeeper
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+  selector:
+    app: gatekeeper
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gatekeeper
+  labels:
+    app: gatekeeper
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gatekeeper
+  template:
+    metadata:
+      labels:
+        app: gatekeeper
+        sidecar.istio.io/inject: "true"
+        istio.io/rev: "asm-managed-rapid"
+    spec:
+      serviceAccountName: tracing-microservice
+      containers:
+      - name: gatekeeper
+        image: {{ .Values.gatekeeper.image.repository }}:{{ .Values.gatekeeper.image.tag }}
+        imagePullPolicy: Always
+        env:
+        - name: SLACK_VERIFICATION_TOKEN
+          value: "{{ .Values.slack.verificationToken }}"
+        - name: MATTERMOST_ACCESS_TOKEN
+          value: "{{ .Values.mattermost.accessToken }}"
+        - name: MATTERMOST_VERIFICATION_TOKEN
+          value: "{{ .Values.mattermost.verificationToken }}"
+        - name: MATTERMOST_DOMAIN
+          value: "{{ .Values.mattermost.domain }}"
+        - name: QUEUER_HOST
+          value: queuer.{{ .Release.Namespace }}.svc.clusterset.local
+        resources: {{ toYaml .Values.gatekeeper.resources | nindent 10 }}
+      restartPolicy: Always
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gatekeeper
+spec:
+  podSelector:
+    matchLabels:
+      app: gatekeeper
+  policyTypes:
+  - Egress
+  - Ingress
+  ingress:
+  - {}
+  egress:
+  - {}
+{{ end }}

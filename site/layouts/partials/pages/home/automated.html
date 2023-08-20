@@ -1,0 +1,126 @@
+{{ $title := .Title}}
+{{ $steps := .steps}}
+
+<div class="animation">
+  <h4 class="animation--title">
+    <span>
+      {{ $title }}
+    </span>
+  </h4>
+  <div class="animation--scroller">
+  
+    <div class="animation--inner">
+
+      {{ range $steps }}
+        <div class="animation__item">
+          <div class="animation__item--title">
+            <div class="text__progress">
+              <span>
+                {{ .title }}
+              </span>
+            </div>
+            <div class="text__current">
+              <span>
+                {{ .title }}
+              </span>
+            </div>
+          </div>
+          <div class="animation__item--description">
+            <p>
+             {{ .text }}
+            </p>
+          </div>
+        </div>
+      {{ end }}
+
+      {{/*  <div class="animation__item">
+        <div class="animation__item--title">
+          <div class="text__progress">
+            <span>
+              {{ $step1 }}
+            </span>
+          </div>
+          <div class="text__current">
+            <span>
+              {{ $step1 }}
+            </span>
+          </div>
+        </div>
+        <div class="animation__item--description">
+          <p>
+            Lorem ipsum dolor sit amet consectetur adipisicing elit. Alias, quos.
+            Lorem ipsum dolor sit amet consectetur adipisicing elit. Alias, quos.
+          </p>
+        </div>
+      </div>
+
+      <div class="animation__item">
+        <div class="animation__item--title">
+          <div class="text__progress">
+            <span>
+              {{ $step2 }}
+            </span>
+          </div>
+          <div class="text__current">
+            <span>
+              {{ $step2 }}
+            </span>
+          </div>
+        </div>
+        <div class="animation__item--description">
+          <p>
+            Lorem ipsum dolor sit amet consectetur adipisicing elit. Alias, quos.
+            Lorem ipsum dolor sit amet consectetur adipisicing elit. Alias, quos.
+          </p>
+        </div>
+      </div>
+
+      <div class="animation__item">
+        <div class="animation__item--title">
+          <div class="text__progress">
+            <span>
+              {{ $step3 }}
+            </span>
+          </div>
+          <div class="text__current">
+            <span>
+              {{ $step3 }}
+            </span>
+          </div>
+        </div>
+        <div class="animation__item--description">
+          <p>
+            Lorem ipsum dolor sit amet consectetur adipisicing elit. Alias, quos.
+            Lorem ipsum dolor sit amet consectetur adipisicing elit. Alias, quos.
+          </p>
+        </div>
+      </div>  */}}
+
+      {{/*  <div class="animation--text">
+        <div class="text__progress">
+          <span>
+            {{ $step2 }}
+          </span>
+        </div>
+        <div class="text__current">
+          <span>
+            {{ $step2 }}
+          </span>
+        </div>
+      </div>
+
+      <div class="animation--text">
+        <div class="text__progress">
+          <span>
+            {{ $step3 }}
+          </span>
+        </div>
+        <div class="text__current">
+          <span>
+            {{ $step3 }}
+          </span>
+        </div>
+      </div>  */}}
+    </div>
+  </div>
+</div>

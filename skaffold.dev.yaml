@@ -1,0 +1,270 @@
+apiVersion: skaffold/v2beta26
+kind: Config
+metadata:
+  name: build
+build:
+  artifacts:
+  - image: us.gcr.io/GOOGLE_PROJECT/isidro/deployer/github
+    context: deployer/github
+    kaniko:
+      cache: {}
+      buildArgs:
+        REGISTRY_PROJECT: GOOGLE_PROJECT
+    hooks:
+      after:
+      - command: ["bash", "-c", "./skaffold-binauthz.sh dev $SKAFFOLD_IMAGE"]
+  - image: us.gcr.io/GOOGLE_PROJECT/isidro/gatekeeper
+    context: gatekeeper
+    kaniko:
+      cache: {}
+      buildArgs:
+        REGISTRY_PROJECT: GOOGLE_PROJECT
+    hooks:
+      after:
+      - command: ["bash", "-c", "./skaffold-binauthz.sh dev $SKAFFOLD_IMAGE"]
+  - image: us.gcr.io/GOOGLE_PROJECT/isidro/gbash
+    context: gbash
+    kaniko:
+      cache: {}
+      buildArgs:
+        REGISTRY_PROJECT: GOOGLE_PROJECT
+    hooks:
+      after:
+      - command: ["bash", "-c", "./skaffold-binauthz.sh dev $SKAFFOLD_IMAGE"]
+  - image: us.gcr.io/GOOGLE_PROJECT/isidro/kubebash
+    context: kubebash
+    kaniko:
+      cache: {}
+      buildArgs:
+        REGISTRY_PROJECT: GOOGLE_PROJECT
+    hooks:
+      after:
+      - command: ["bash", "-c", "./skaffold-binauthz.sh dev $SKAFFOLD_IMAGE"]
+  - image: us.gcr.io/GOOGLE_PROJECT/isidro/orchestration
+    context: orchestration
+    kaniko:
+      cache: {}
+      buildArgs:
+        REGISTRY_PROJECT: GOOGLE_PROJECT
+    hooks:
+      after:
+      - command: ["bash", "-c", "./skaffold-binauthz.sh dev $SKAFFOLD_IMAGE"]
+  - image: us.gcr.io/GOOGLE_PROJECT/isidro/queuer
+    context: queuer
+    kaniko:
+      cache: {}
+      buildArgs:
+        REGISTRY_PROJECT: GOOGLE_PROJECT
+    hooks:
+      after:
+      - command: ["bash", "-c", "./skaffold-binauthz.sh dev $SKAFFOLD_IMAGE"]
+  - image: us.gcr.io/GOOGLE_PROJECT/isidro/repeater
+    context: repeater
+    kaniko:
+      cache: {}
+      buildArgs:
+        REGISTRY_PROJECT: GOOGLE_PROJECT
+    hooks:
+      after:
+      - command: ["bash", "-c", "./skaffold-binauthz.sh dev $SKAFFOLD_IMAGE"]
+  - image: us.gcr.io/GOOGLE_PROJECT/isidro/responder
+    context: responder
+    kaniko:
+      cache: {}
+      buildArgs:
+        REGISTRY_PROJECT: GOOGLE_PROJECT
+    hooks:
+      after:
+      - command: ["bash", "-c", "./skaffold-binauthz.sh dev $SKAFFOLD_IMAGE"]
+  - image: us.gcr.io/GOOGLE_PROJECT/isidro/tasks
+    context: tasks
+    kaniko:
+      cache: {}
+      buildArgs:
+        REGISTRY_PROJECT: GOOGLE_PROJECT
+    hooks:
+      after:
+      - command: ["bash", "-c", "./skaffold-binauthz.sh dev $SKAFFOLD_IMAGE"]
+  googleCloudBuild:
+    timeout: 3600s
+---
+apiVersion: skaffold/v2beta26
+kind: Config
+metadata:
+  name: build-nlp
+build:
+  artifacts:
+  - image: us.gcr.io/GOOGLE_PROJECT/isidro/keywords
+    context: keywords
+    kaniko:
+      cache: {}
+      buildArgs:
+        REGISTRY_PROJECT: GOOGLE_PROJECT
+    hooks:
+      after:
+      - command: ["bash", "-c", "./skaffold-binauthz.sh dev $SKAFFOLD_IMAGE"]
+  googleCloudBuild:
+    timeout: 3600s
+    machineType: E2_HIGHCPU_32
+---
+apiVersion: skaffold/v2beta26
+kind: Config
+metadata:
+  name: deploy-cert-manager
+deploy:
+  kubeContext: isidro-config
+  helm:
+    releases:
+    - name: cert-manager
+      remoteChart: jetstack/cert-manager
+      version: v1.8.2
+      createNamespace: true
+      namespace: cert-manager
+      setValues:
+        installCRDs: true
+    hooks:
+      after:
+      - host:
+          command: ["bash", "-c", "kubectl annotate serviceaccount --context=isidro-config --namespace=cert-manager --overwrite cert-manager \"iam.gke.io/gcp-service-account=isidro-cert-manager@GOOGLE_PROJECT.iam.gserviceaccount.com\""]
+---
+apiVersion: skaffold/v2beta26
+kind: Config
+metadata:
+  name: deploy-mattermost
+deploy:
+  kubeContext: isidro-us
+  helm:
+    releases:
+    - name: mattermost
+      remoteChart: mattermost/mattermost-team-edition
+      version: 6.5.0
+      createNamespace: true
+      namespace: mattermost
+      setValues:
+        deploymentStrategy.type: Recreate
+        securityContext.fsGroup: "2000"
+        resources:
+          requests:
+            cpu: 250m
+            memory: 2Gi
+          limits:
+            cpu: 1
+            memory: 2Gi
+        mysql.mysqlUser: isidro
+        mysql.mysqlPassword: isidro
+        mysql.resources:
+          requests:
+            cpu: 250m
+            memory: 2Gi
+          limits:
+            cpu: 1
+            memory: 2Gi
+---
+apiVersion: skaffold/v2beta26
+kind: Config
+metadata:
+  name: deploy-us
+requires:
+- configs: ["build-nlp", "build"]
+deploy:
+  kubeContext: isidro-us
+  helm:
+    releases:
+    - name: isidro
+      chartPath: chart
+      skipBuildDependencies: true
+      createNamespace: true
+      namespace: isidro
+      setValues:
+        project: GOOGLE_PROJECT
+        mattermost.domain: MATTERMOST_DOMAIN
+        mattermost.accessToken: "1234567890"
+        mattermost.verificationToken: "1234567890"
+        kubebash.enabled: true
+        orchestration.greeting: "Hello from Iowa!"
+        deployer.github.token: "1234567890"
+      artifactOverrides:
+        deployer.github.image: us.gcr.io/GOOGLE_PROJECT/isidro/deployer/github
+        gatekeeper.image: us.gcr.io/GOOGLE_PROJECT/isidro/gatekeeper
+        gbash.async.image: us.gcr.io/GOOGLE_PROJECT/isidro/gbash
+        gbash.sync.image: us.gcr.io/GOOGLE_PROJECT/isidro/gbash
+        keywords.image: us.gcr.io/GOOGLE_PROJECT/isidro/keywords
+        kubebash.image: us.gcr.io/GOOGLE_PROJECT/isidro/kubebash
+        orchestration.image: us.gcr.io/GOOGLE_PROJECT/isidro/orchestration
+        queuer.image: us.gcr.io/GOOGLE_PROJECT/isidro/queuer
+        repeater.image: us.gcr.io/GOOGLE_PROJECT/isidro/repeater
+        responder.image: us.gcr.io/GOOGLE_PROJECT/isidro/responder
+        tasks.image: us.gcr.io/GOOGLE_PROJECT/isidro/tasks
+      imageStrategy:
+        helm: {}
+---
+apiVersion: skaffold/v2beta26
+kind: Config
+metadata:
+  name: configconnector-install
+requires:
+- configs: ["deploy-cert-manager"]
+deploy:
+  kubeContext: isidro-config
+  kubectl:
+    manifests:
+    - "vendor/configconnector-operator.yaml"
+    hooks:
+      after:
+      # Ensure required CRDs are available
+      - host:
+          command: ["bash", "-c", "until kubectl get ConfigConnector --context isidro-config; do echo Waiting for CRD creation...; sleep 3; done"]
+---
+apiVersion: skaffold/v2beta26
+kind: Config
+metadata:
+  name: configconnector-setup
+requires:
+- configs: ["configconnector-install"]
+deploy:
+  kubeContext: isidro-config
+  helm:
+    releases:
+    - name: isidro-configconnector
+      chartPath: auxiliary/configconnector
+      setValues:
+        project: GOOGLE_PROJECT
+    hooks:
+      after:
+      # Ensure required CRDs are available
+      - host:
+          command: ["bash", "-c", "until kubectl get ComputeAddress --context isidro-config; do echo Waiting for CRD creation...; sleep 3; done"]
+      - host:
+          command: ["bash", "-c", "until kubectl get DNSRecordSet --context isidro-config; do echo Waiting for CRD creation...; sleep 3; done"]
+---
+apiVersion: skaffold/v2beta26
+kind: Config
+metadata:
+  name: deploy-networking
+requires:
+- configs: ["configconnector-setup"]
+deploy:
+  kubeContext: isidro-config
+  helm:
+    releases:
+    - name: isidro-networking
+      chartPath: auxiliary/networking
+      skipBuildDependencies: true
+      setValues:
+        project: GOOGLE_PROJECT
+        api.domain: API_DOMAIN
+        mattermost.domain: MATTERMOST_DOMAIN
+        dns.zone: DNS_ZONE_NAME
+---
+apiVersion: skaffold/v2beta26
+kind: Config
+metadata:
+  name: deploy-auxiliary-manifests
+requires:
+- configs: ["deploy-networking"]
+deploy:
+  kubeContext: isidro-config
+  kubectl:
+    manifests:
+    - "auxiliary/multicluster/mci.yaml"
+    - "auxiliary/multicluster/mcs.yaml"

@@ -1,0 +1,95 @@
+{{ if eq .Values.responder.enabled true }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: responder
+  labels:
+    app: responder
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+  selector:
+    app: responder
+---
+kind: ServiceExport
+apiVersion: net.gke.io/v1
+metadata:
+ name: responder
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: responder
+  labels:
+    app: responder
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: responder
+  template:
+    metadata:
+      labels:
+        app: responder
+        sidecar.istio.io/inject: "true"
+        istio.io/rev: "asm-managed-rapid"
+    spec:
+      serviceAccountName: tracing-microservice
+      containers:
+      - name: responder
+        image: {{ .Values.responder.image.repository }}:{{ .Values.responder.image.tag }}
+        imagePullPolicy: Always
+        env:
+        - name: SLACK_OAUTH_TOKEN
+          value: "{{ .Values.slack.oauthToken }}"
+        - name: MATTERMOST_ACCESS_TOKEN
+          value: "{{ .Values.mattermost.accessToken }}"
+        - name: MATTERMOST_DOMAIN
+          value: "{{ .Values.mattermost.domain }}"
+        resources: {{ toYaml .Values.responder.resources | nindent 10 }}
+      restartPolicy: Always
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: responder
+spec:
+  podSelector:
+    matchLabels:
+      app: responder
+  policyTypes:
+  - Egress
+  - Ingress
+  ingress:
+  - from:
+    # GCP Health Check IPs
+    - ipBlock:
+        cidr: 35.191.0.0/16
+    - ipBlock:
+        cidr: 130.211.0.0/22
+    # RFC1918 (overkill, but enables multi-cluster and multi-region)
+    - ipBlock:
+        cidr: 10.0.0.0/8
+    - ipBlock:
+        cidr: 172.16.0.0/12
+    - ipBlock:
+        cidr: 192.168.0.0/16
+    # In-cluster services (failover for non-RFC1918 topologies)
+    - podSelector:
+        matchLabels:
+          app: orchestration
+    - podSelector:
+        matchLabels:
+          app: repeater
+    - podSelector:
+        matchLabels:
+          app: tasks
+    - podSelector:
+        matchLabels:
+          app: deployer-github-workers
+  egress:
+  - {}
+{{ end }}
