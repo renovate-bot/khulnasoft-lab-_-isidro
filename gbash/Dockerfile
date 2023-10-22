@@ -1,4 +1,4 @@
-FROM almir/webhook:2.8.0
+FROM almir/webhook:2.8.1
 
 # apk install system prerequisite packages
 RUN apk add --no-cache bash curl jq python3
