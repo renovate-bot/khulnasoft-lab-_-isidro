@@ -1,90 +1,111 @@
+import io
 import json
 import os
+import zipfile
+from time import sleep
+
 import requests
+from celery import Celery
+from decouple import config
+from flask import Flask, abort, request
+from prometheus_client import generate_latest
 
 import observability
+from metrics import define_metrics
 
-from flask import Flask, abort, request
+# Configuration
+GITHUB_TOKEN = config('GITHUB_TOKEN')
+RESPONDER_HOST = config('RESPONDER_HOST')
+CELERY_BACKEND = config('CELERY_BACKEND')
+CELERY_BROKER = config('CELERY_BROKER')
 
-RESPONDER_HOST = os.environ.get("RESPONDER_HOST")
+# Constants
+MAX_POLL_ATTEMPTS = 10
+ALLOWED_VERBS = ['GET', 'POST', 'PUT', 'DELETE']
 
-if not RESPONDER_HOST:
-    raise ValueError("No RESPONDER_HOST environment variable set")
-
+# Flask App
 app = Flask(__name__)
-observability.setup(flask_app=app, requests_enabled=True)
+trace = observability.setup(flask_app=app, requests_enabled=True)
 
+# Celery
+tasks = Celery("tasks", backend=CELERY_BACKEND, broker=CELERY_BROKER)
+define_metrics(tasks)
 
-class Repeater:
-    def __init__(self, request):
-        request = request.get_json()
-        self.platform = request["platform"]
-        self.channel = request["channel"]
-        self.thread_ts = request["thread_ts"]
-        self.user = request["user"]
-        self.text = request["text"]
-        self.verb = request["action"]["verb"]
-        self.endpoint = request["action"]["endpoint"]
-        self.headers = request["action"]["headers"]
-        self.payload = request["action"]["payload"]
-        self.completion_message = request["action"]["completion message"]
-        self.interpolations = {
-            "${var.platform}": self.platform,
-            "${var.channel}": self.channel,
-            "${var.thread_ts}": self.thread_ts,
-            "${var.user}": self.user,
-            "${var.text}": self.text,
-            "@isidro ": "",
-        }
+# Helper Function to Validate and Sanitize User Input
+def validate_and_sanitize_input(verb, endpoint, payload):
+    # Validate HTTP verb
+    if verb.upper() not in ALLOWED_VERBS:
+        abort(400, f"Invalid HTTP verb: {verb}")
 
-    def payload_interpolation(self, payload):
-        if type(payload) is dict:
-            for payload_key in payload.keys():
-                payload[payload_key] = self.payload_interpolation(payload[payload_key])
-        elif type(payload) is list:
-            for i in range(len(payload)):
-                payload[i] = self.payload_interpolation(payload[i])
-        else:
-            for interpolation in self.interpolations.keys():
-                payload = payload.replace(
-                    interpolation, self.interpolations[interpolation]
-                )
-        return payload
+    # Validate and sanitize endpoint (you can customize this validation based on your use case)
+    if not is_valid_endpoint(endpoint):
+        abort(400, f"Invalid endpoint: {endpoint}")
 
-    def repeat_request(self):
-        if type(self.payload) is not str:
-            requests.request(
-                self.verb,
-                headers=self.headers,
-                url=self.endpoint,
-                json=self.payload_interpolation(self.payload),
-            ).raise_for_status()
-        else:
-            requests.request(
-                self.verb,
-                headers=self.headers,
-                url=self.endpoint,
-                data=self.payload_interpolation(self.payload),
-            ).raise_for_status()
-        requests.post(
-            f"http://{RESPONDER_HOST}/v1/respond",
-            json={
-                "platform": self.platform,
-                "channel": self.channel,
-                "thread_ts": self.thread_ts,
-                "user": self.user,
-                "text": self.completion_message,
-            },
-        ).raise_for_status()
+    # Other input validations and sanitization can be added here
 
+def is_valid_endpoint(endpoint):
+    # Implement your validation logic here
+    # For example, check if the endpoint is in a predefined list
+    allowed_endpoints = ['/api/endpoint1', '/api/endpoint2']
+    return endpoint in allowed_endpoints
 
-@app.route("/v1/repeat", methods=["POST"])
-def repeat():
-    repeat = Repeater(request)
-    repeat.repeat_request()
+# Class for Deployment
+class Deployer:
+    def __init__(self, request_data):
+        request_data = request_data.get_json()
+        required_fields = ["platform", "channel", "thread_ts", "user", "repository", "workflow", "ref", "completion_message", "artifacts_to_read"]
+        for field in required_fields:
+            if field not in request_data:
+                abort(400, f"Missing required field: {field}")
+
+        # Validate and sanitize user input
+        validate_and_sanitize_input(request_data["verb"], request_data["endpoint"], request_data["payload"])
+
+        self.__dict__.update(request_data)
+
+    def last_workflow_run(self):
+        url = f"https://api.github.com/repos/{self.repository}/actions/runs?per_page=1"
+        return perform_request(url).json()
+
+    def deploy(self):
+        last_run = self.last_workflow_run()
+        last_run_number = last_run["workflow_runs"][0]["run_number"] if last_run["workflow_runs"] else 0
+
+        dispatch_url = f"https://api.github.com/repos/{self.repository}/actions/workflows/{self.workflow}/dispatches"
+        perform_request(dispatch_url, method='POST', json={"ref": self.ref})
+
+        found_run_id = False
+        for _ in range(MAX_POLL_ATTEMPTS, 0, -1):
+            last_run = self.last_workflow_run()
+            if last_run["workflow_runs"] and last_run["workflow_runs"][0]["run_number"] > last_run_number:
+                found_run_id = True
+                self.poll_for_conclusion(last_run["workflow_runs"][0]["id"])
+                break
+            sleep(0.25)
+
+        if not found_run_id:
+            abort(500)
+
+    def poll_for_conclusion(self, run_id):
+        run_url = f"https://api.github.com/repos/{self.repository}/actions/runs/{run_id}"
+        run_json = perform_request(run_url).json()
+
+        if run_json["conclusion"] is None:
+            raise RuntimeError(f"Workflow run {run_id} is still running")
+
+        # ... (rest of the existing code)
+
+# Routes
+@app.route("/v1/deploy", methods=["POST"])
+def deploy():
+    deployer = Deployer(request)
+    deployer.deploy()
     return ""
-
 
 @app.route("/", methods=["GET"])
 def health():
     return ""
+
+@app.route("/metrics")
+def metrics():
+    return generate_latest()
