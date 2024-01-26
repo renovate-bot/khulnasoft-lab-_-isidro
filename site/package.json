@@ -23,7 +23,7 @@
   },
   "homepage": "https://github.com/khulnasoft-lab/isidro#readme",
   "devDependencies": {
-    "npm-check": "^5.9.2"
+    "npm-check": "^6.0.0"
   },
   "dependencies": {
     "@fullhuman/postcss-purgecss": "^4.1.3",
