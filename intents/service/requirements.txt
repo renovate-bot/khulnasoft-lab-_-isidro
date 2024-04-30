@@ -1,4 +1,4 @@
-flask==2.3.3
+flask==3.0.3
 gunicorn==21.2.0
 tensorflow==2.15.0.post1
 tensorflow_hub==0.16.0
