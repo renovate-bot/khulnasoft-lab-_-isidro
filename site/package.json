@@ -35,7 +35,7 @@
     "hugo-installer": "^4.0.0",
     "lazysizes": "^5.3.2",
     "postcss": "^8.4.31",
-    "postcss-cli": "^9.1.0"
+    "postcss-cli": "^11.0.0"
   },
   "otherDependencies": {
     "hugo": "0.99.0"
